@@ -81,6 +81,7 @@ const ecommerceSchema = z.array(
             z.literal("EventDependentPayments"),
             z.literal("SubscriptionPayments"),
             z.literal("C2CPayments"),
+            z.literal("ConsumerPresentFuturePaymentPayments"),
           ]),
         ),
         progressiveEcommerceRollout: z.boolean(),
