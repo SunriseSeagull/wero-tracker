@@ -23,7 +23,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Landmark, Plus, SearchX, Store } from "lucide-react";
+import { Landmark, Plus, Rss, SearchX, Store } from "lucide-react";
 import { Button } from "./ui/button";
 import { EditorProvider, useEditor } from "@/lib/editor-context";
 import { countries } from "@/lib/constants";
@@ -374,6 +374,21 @@ function WeroTrackerContent({ data }: WeroTrackerProps) {
                 GitHub
               </a>
             </div>
+            <p className="flex flex-wrap items-center justify-center gap-x-2 text-xs">
+              <Rss size={12} />
+              <span>Follow changes via</span>
+              <a href="/atom" className="hover:text-primary transition-colors">
+                Atom
+              </a>
+              <span>•</span>
+              <a href="/rss" className="hover:text-primary transition-colors">
+                RSS
+              </a>
+              <span>•</span>
+              <a href="/json" className="hover:text-primary transition-colors">
+                JSON Feed
+              </a>
+            </p>
             <p className="text-sm mt-8">
               Made with ❤️ by{" "}
               <a
