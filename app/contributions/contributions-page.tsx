@@ -55,7 +55,7 @@ import {
   X,
 } from "lucide-react";
 import { diffLines } from "diff";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import Link from "next/link";
 import type {
   BankContributionData,
@@ -67,9 +67,21 @@ import type {
 import {
   ContributionWithRelations,
   getContributions,
+  deleteContribution,
   getContributionCounts,
   rejectOrApproveContribution,
 } from "@/actions/contribution-actions";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import stableStringify from "json-stable-stringify";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -85,6 +97,9 @@ import { findDuplicateMerchants } from "@/actions/merchant-actions";
 import { CONTRIBUTIONS_PAGE_SIZE } from "@/lib/constants";
 import { triggerWeroImport } from "@/actions/import-actions";
 import type { WeroImportResult } from "@/lib/wero-import";
+import { EditorProvider, useEditor } from "@/lib/editor-context";
+import { BankDialog } from "@/components/bank-dialog";
+import { MerchantDialog } from "@/components/merchant-dialog";
 
 // ============================================================================
 // Types
@@ -453,7 +468,9 @@ function ReviewDialog({
   open,
   onOpenChange,
   onAction,
-  isLoading,
+  onEdited,
+  isApproving,
+  isRejecting,
   canReview,
 }: {
   contribution: ContributionWithRelations;
@@ -464,14 +481,37 @@ function ReviewDialog({
     action: "approved" | "rejected",
     reviewNote: string,
   ) => void;
-  isLoading: boolean;
+  onEdited: () => void;
+  isApproving: boolean;
+  isRejecting: boolean;
   canReview: boolean;
 }) {
   const [reviewNote, setReviewNote] = useState("");
+  const { openEditorDialog } = useEditor();
   const entityName =
     contribution.type === "bank"
       ? (contribution.data as BankContributionData).name.default
       : (contribution.data as MerchantContributionData).name;
+
+  const handleEdit = () => {
+    const review = { contributionId: contribution.id, onSaved: onEdited };
+    if (contribution.type === "bank") {
+      openEditorDialog({
+        type: "bank",
+        action: "review",
+        review: { ...review, data: contribution.data as BankContributionData },
+      });
+    } else {
+      openEditorDialog({
+        type: "merchant",
+        action: "review",
+        review: {
+          ...review,
+          data: contribution.data as MerchantContributionData,
+        },
+      });
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -520,23 +560,37 @@ function ReviewDialog({
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
-            disabled={isLoading}
+            disabled={isApproving || isRejecting}
           >
             Cancel
           </Button>
+          {canReview && contribution.action !== "delete" && (
+            <Button
+              variant="outline"
+              onClick={handleEdit}
+              disabled={isApproving || isRejecting}
+            >
+              <Edit3 size={16} />
+              Edit
+            </Button>
+          )}
           <Button
             variant="destructive"
             onClick={() => onAction(contribution.id, "rejected", reviewNote)}
-            disabled={!canReview || isLoading}
+            disabled={!canReview || isRejecting}
           >
-            {isLoading ? <Loader2 className="animate-spin" size={16} /> : null}
+            {isRejecting ? (
+              <Loader2 className="animate-spin" size={16} />
+            ) : null}
             Reject
           </Button>
           <Button
             onClick={() => onAction(contribution.id, "approved", reviewNote)}
-            disabled={!canReview || isLoading}
+            disabled={!canReview || isApproving}
           >
-            {isLoading ? <Loader2 className="animate-spin" size={16} /> : null}
+            {isApproving ? (
+              <Loader2 className="animate-spin" size={16} />
+            ) : null}
             Approve
           </Button>
         </DialogFooter>
@@ -650,9 +704,15 @@ function ImportResultDialog({
 function ContributionCard({
   contribution,
   onReview,
+  canDelete,
+  onDelete,
+  isDeleting,
 }: {
   contribution: ContributionWithRelations;
   onReview: (c: ContributionWithRelations) => void;
+  canDelete: boolean;
+  onDelete: (id: string) => void;
+  isDeleting: boolean;
 }) {
   const entityName =
     contribution.type === "bank"
@@ -696,6 +756,9 @@ function ContributionCard({
                 </AvatarFallback>
               </Avatar>
               <span>{contribution.user.name}</span>
+              {contribution.coAuthor && (
+                <span>with {contribution.coAuthor.name}</span>
+              )}
               <span>•</span>
               <span>
                 {new Date(contribution.createdAt).toLocaleDateString()}
@@ -718,13 +781,51 @@ function ContributionCard({
 
           {/* Actions */}
           {contribution.status === "pending" && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onReview(contribution)}
-            >
-              Review
-            </Button>
+            <div className="flex items-start gap-2">
+              {canDelete && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isDeleting}
+                      aria-label="Delete contribution"
+                    >
+                      {isDeleting ? (
+                        <Loader2 className="animate-spin" size={16} />
+                      ) : (
+                        <Trash2 size={16} />
+                      )}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete contribution?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Your contribution for &quot;{entityName}&quot; will be
+                        permanently deleted. This cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        variant="destructive"
+                        onClick={() => onDelete(contribution.id)}
+                      >
+                        Delete
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onReview(contribution)}
+              >
+                Review
+              </Button>
+            </div>
           )}
         </div>
       </CardContent>
@@ -835,9 +936,11 @@ export function ContributionsPage({
   );
   const [typeFilter, setTypeFilter] = useState<ContributionType | "all">("all");
   const [page, setPage] = useState(1);
-  const [reviewTarget, setReviewTarget] =
-    useState<ContributionWithRelations | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+  const [reviewTargetId, setReviewTargetId] = useState<string | null>(null);
+  const reviewTarget = items.find((c) => c.id === reviewTargetId) ?? null;
+  const [isApproving, setIsApproving] = useState(false);
+  const [isRejecting, setIsRejecting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isFetching, setIsFetching] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importResult, setImportResult] = useState<WeroImportResult | null>(
@@ -890,7 +993,11 @@ export function ContributionsPage({
     status: "approved" | "rejected",
     reviewNote: string,
   ) => {
-    setIsSaving(true);
+    if (status === "approved") {
+      setIsApproving(true);
+    } else if (status === "rejected") {
+      setIsRejecting(true);
+    }
     try {
       const { success, message } = await rejectOrApproveContribution(
         id,
@@ -902,7 +1009,7 @@ export function ContributionsPage({
         return;
       }
 
-      setReviewTarget(null);
+      setReviewTargetId(null);
       await Promise.all([
         fetchContributions(),
         getContributionCounts().then(setCounts),
@@ -910,7 +1017,30 @@ export function ContributionsPage({
     } catch {
       alert("An error occurred");
     } finally {
-      setIsSaving(false);
+      if (status === "approved") {
+        setIsApproving(false);
+      } else if (status === "rejected") {
+        setIsRejecting(false);
+      }
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    setDeletingId(id);
+    try {
+      const { success, message } = await deleteContribution(id);
+      if (!success) {
+        alert(message || "Failed to delete contribution");
+        return;
+      }
+      await Promise.all([
+        fetchContributions(),
+        getContributionCounts().then(setCounts),
+      ]);
+    } catch {
+      alert("An error occurred");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -936,213 +1066,226 @@ export function ContributionsPage({
   };
 
   return (
-    <div className="min-h-screen">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto p-4">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" asChild>
-              <Link href="/">
-                <ArrowLeft size={18} />
-              </Link>
-            </Button>
-            <div>
-              <h1 className="text-xl font-bold">Contributions</h1>
-              <p className="text-xs text-muted-foreground">
-                Review and manage community contributions
-              </p>
+    <EditorProvider>
+      <div className="min-h-screen">
+        {/* Header */}
+        <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
+          <div className="container mx-auto p-4">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="icon" asChild>
+                <Link href="/">
+                  <ArrowLeft size={18} />
+                </Link>
+              </Button>
+              <div>
+                <h1 className="text-xl font-bold">Contributions</h1>
+                <p className="text-xs text-muted-foreground">
+                  Review and manage community contributions
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main className="container mx-auto px-4 py-8 space-y-6">
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <StatsCard title="Total" stat={counts.total} loading={loading} />
-          <StatsCard
-            title="Pending"
-            stat={counts.pending}
-            className="text-yellow-500"
-            loading={loading}
-          />
-          <StatsCard
-            title="Approved"
-            stat={counts.approved}
-            className="text-green-500"
-            loading={loading}
-          />
-          <StatsCard
-            title="Rejected"
-            stat={counts.rejected}
-            className="text-red-500"
-            loading={loading}
-          />
-        </div>
+        <main className="container mx-auto px-4 py-8 space-y-6">
+          {/* Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <StatsCard title="Total" stat={counts.total} loading={loading} />
+            <StatsCard
+              title="Pending"
+              stat={counts.pending}
+              className="text-yellow-500"
+              loading={loading}
+            />
+            <StatsCard
+              title="Approved"
+              stat={counts.approved}
+              className="text-green-500"
+              loading={loading}
+            />
+            <StatsCard
+              title="Rejected"
+              stat={counts.rejected}
+              className="text-red-500"
+              loading={loading}
+            />
+          </div>
 
-        {/* Filters */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <Filter size={16} className="text-muted-foreground" />
-          <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
-            <SelectTrigger className="w-36">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              {Object.entries(statusConfig).map(
-                ([key, { label, icon: Icon }]) => (
-                  <SelectItem key={key} value={key}>
-                    <Icon size={16} />
-                    {label}
-                  </SelectItem>
-                ),
-              )}
-            </SelectContent>
-          </Select>
-          <Select value={typeFilter} onValueChange={handleTypeFilterChange}>
-            <SelectTrigger className="w-36">
-              <SelectValue placeholder="Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              {Object.entries(typeConfig).map(
-                ([key, { label, icon: Icon }]) => (
-                  <SelectItem key={key} value={key}>
-                    <Icon size={16} />
-                    {label}s
-                  </SelectItem>
-                ),
-              )}
-            </SelectContent>
-          </Select>
-          <span className="text-xs text-muted-foreground ml-auto">
-            {loading ? (
-              <Skeleton className="h-4 w-24" />
-            ) : (
-              `${totalCount} contribution${totalCount !== 1 ? "s" : ""}`
-            )}
-          </span>
-          {isAdmin && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleManualImport}
-              disabled={isImporting}
+          {/* Filters */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <Filter size={16} className="text-muted-foreground" />
+            <Select
+              value={statusFilter}
+              onValueChange={handleStatusFilterChange}
             >
-              {isImporting ? (
-                <Loader2 className="animate-spin" size={16} />
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                {Object.entries(statusConfig).map(
+                  ([key, { label, icon: Icon }]) => (
+                    <SelectItem key={key} value={key}>
+                      <Icon size={16} />
+                      {label}
+                    </SelectItem>
+                  ),
+                )}
+              </SelectContent>
+            </Select>
+            <Select value={typeFilter} onValueChange={handleTypeFilterChange}>
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                {Object.entries(typeConfig).map(
+                  ([key, { label, icon: Icon }]) => (
+                    <SelectItem key={key} value={key}>
+                      <Icon size={16} />
+                      {label}s
+                    </SelectItem>
+                  ),
+                )}
+              </SelectContent>
+            </Select>
+            <span className="text-xs text-muted-foreground ml-auto">
+              {loading ? (
+                <Skeleton className="h-4 w-24" />
               ) : (
-                <Download size={16} />
+                `${totalCount} contribution${totalCount !== 1 ? "s" : ""}`
               )}
-              Import from Wero API
-            </Button>
-          )}
-        </div>
-
-        {/* List */}
-        <div className="space-y-3">
-          {loading || isFetching ? (
-            Array.from({ length: 5 }).map((_, i) => (
-              <ContributionCardSkeleton key={i} />
-            ))
-          ) : items.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center text-muted-foreground">
-                <p className="text-sm">No contributions found.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            items.map((contribution) => (
-              <ContributionCard
-                key={contribution.id}
-                contribution={contribution}
-                onReview={setReviewTarget}
-              />
-            ))
-          )}
-        </div>
-
-        {/* Pagination */}
-        {!loading && totalPages > 1 && (
-          <Pagination>
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  href="#"
-                  aria-disabled={page <= 1 || isFetching}
-                  className={cn(
-                    (page <= 1 || isFetching) &&
-                      "pointer-events-none opacity-50",
-                  )}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    if (page > 1) setPage((p) => p - 1);
-                  }}
-                />
-              </PaginationItem>
-              {getPageNumbers(page, totalPages).map((p, i) =>
-                p === "ellipsis" ? (
-                  <PaginationItem key={`ellipsis-${i}`}>
-                    <PaginationEllipsis />
-                  </PaginationItem>
+            </span>
+            {isAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleManualImport}
+                disabled={isImporting}
+              >
+                {isImporting ? (
+                  <Loader2 className="animate-spin" size={16} />
                 ) : (
-                  <PaginationItem key={p}>
-                    <PaginationLink
-                      href="#"
-                      isActive={p === page}
-                      aria-disabled={isFetching}
-                      className={cn(isFetching && "pointer-events-none")}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setPage(p);
-                      }}
-                    >
-                      {p}
-                    </PaginationLink>
-                  </PaginationItem>
-                ),
-              )}
-              <PaginationItem>
-                <PaginationNext
-                  href="#"
-                  aria-disabled={page >= totalPages || isFetching}
-                  className={cn(
-                    (page >= totalPages || isFetching) &&
-                      "pointer-events-none opacity-50",
-                  )}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    if (page < totalPages) setPage((p) => p + 1);
-                  }}
+                  <Download size={16} />
+                )}
+                Import from Wero API
+              </Button>
+            )}
+          </div>
+
+          {/* List */}
+          <div className="space-y-3">
+            {loading || isFetching ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <ContributionCardSkeleton key={i} />
+              ))
+            ) : items.length === 0 ? (
+              <Card>
+                <CardContent className="p-8 text-center text-muted-foreground">
+                  <p className="text-sm">No contributions found.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              items.map((contribution) => (
+                <ContributionCard
+                  key={contribution.id}
+                  contribution={contribution}
+                  onReview={(c) => setReviewTargetId(c.id)}
+                  canDelete={currentUser?.id === contribution.userId}
+                  onDelete={handleDelete}
+                  isDeleting={deletingId === contribution.id}
                 />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
+              ))
+            )}
+          </div>
+
+          {/* Pagination */}
+          {!loading && totalPages > 1 && (
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    href="#"
+                    aria-disabled={page <= 1 || isFetching}
+                    className={cn(
+                      (page <= 1 || isFetching) &&
+                        "pointer-events-none opacity-50",
+                    )}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (page > 1) setPage((p) => p - 1);
+                    }}
+                  />
+                </PaginationItem>
+                {getPageNumbers(page, totalPages).map((p, i) =>
+                  p === "ellipsis" ? (
+                    <PaginationItem key={`ellipsis-${i}`}>
+                      <PaginationEllipsis />
+                    </PaginationItem>
+                  ) : (
+                    <PaginationItem key={p}>
+                      <PaginationLink
+                        href="#"
+                        isActive={p === page}
+                        aria-disabled={isFetching}
+                        className={cn(isFetching && "pointer-events-none")}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setPage(p);
+                        }}
+                      >
+                        {p}
+                      </PaginationLink>
+                    </PaginationItem>
+                  ),
+                )}
+                <PaginationItem>
+                  <PaginationNext
+                    href="#"
+                    aria-disabled={page >= totalPages || isFetching}
+                    className={cn(
+                      (page >= totalPages || isFetching) &&
+                        "pointer-events-none opacity-50",
+                    )}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (page < totalPages) setPage((p) => p + 1);
+                    }}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          )}
+        </main>
+
+        {/* Review Dialog */}
+        {reviewTarget && (
+          <ReviewDialog
+            contribution={reviewTarget}
+            open={!!reviewTarget}
+            onOpenChange={(open) => {
+              if (!open) setReviewTargetId(null);
+            }}
+            onAction={handleReviewAction}
+            onEdited={fetchContributions}
+            isApproving={isApproving}
+            isRejecting={isRejecting}
+            canReview={isAdmin}
+          />
         )}
-      </main>
 
-      {/* Review Dialog */}
-      {reviewTarget && (
-        <ReviewDialog
-          contribution={reviewTarget}
-          open={!!reviewTarget}
+        <BankDialog />
+        <MerchantDialog />
+
+        {/* Import Result Dialog */}
+        <ImportResultDialog
+          result={importResult}
+          open={!!importResult}
           onOpenChange={(open) => {
-            if (!open) setReviewTarget(null);
+            if (!open) setImportResult(null);
           }}
-          onAction={handleReviewAction}
-          isLoading={isSaving}
-          canReview={isAdmin}
         />
-      )}
-
-      {/* Import Result Dialog */}
-      <ImportResultDialog
-        result={importResult}
-        open={!!importResult}
-        onOpenChange={(open) => {
-          if (!open) setImportResult(null);
-        }}
-      />
-    </div>
+      </div>
+    </EditorProvider>
   );
 }

@@ -79,6 +79,9 @@ export const contributions = pgTable(
       onDelete: "set null",
     }),
     reviewNote: text("review_note"),
+    coAuthorId: text("co_author_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
@@ -102,6 +105,10 @@ export const contributionsRelations = relations(contributions, ({ one }) => ({
   }),
   reviewer: one(users, {
     fields: [contributions.reviewerId],
+    references: [users.id],
+  }),
+  coAuthor: one(users, {
+    fields: [contributions.coAuthorId],
     references: [users.id],
   }),
 }));

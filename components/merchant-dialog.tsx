@@ -51,8 +51,15 @@ import {
 } from "@/components/ui/item";
 import { Merchant, NewMerchant } from "@/db/schema/merchants";
 import { SupportStatus } from "@/db/schema/support";
-import { createMerchantContribution } from "@/actions/contribution-actions";
-import { ContributionAction } from "@/db/schema/contributions";
+import {
+  createMerchantContribution,
+  updateContributionData,
+} from "@/actions/contribution-actions";
+import {
+  ContributionAction,
+  MerchantContributionData,
+} from "@/db/schema/contributions";
+import type { ReviewEditOptions } from "@/lib/editor-context";
 import { toast } from "sonner";
 import {
   createMerchant,
@@ -342,6 +349,8 @@ export function MerchantDialog() {
   const [existingMerchant, setExistingMerchant] = useState<Merchant | null>(
     null,
   );
+  const [review, setReview] =
+    useState<ReviewEditOptions<MerchantContributionData> | null>(null);
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [duplicateMatches, setDuplicateMatches] = useState<Merchant[]>([]);
@@ -371,9 +380,11 @@ export function MerchantDialog() {
     setReason("");
   };
 
-  const populateFormFromMerchant = (merchant: Merchant) => {
+  const populateFormFromMerchant = (
+    merchant: Merchant | MerchantContributionData,
+  ) => {
     setName(merchant.name);
-    setAliases(merchant.aliases);
+    setAliases(merchant.aliases ?? []);
     setLogoUrl(merchant.logoUrl);
     setWebsite(merchant.website);
     setCategory(merchant.category);
@@ -385,6 +396,17 @@ export function MerchantDialog() {
     onOpenEditorDialog((options) => {
       if (options.type === "merchant") {
         resetForm();
+        if (options.action === "review") {
+          // Reviewers edit the full data set like admins, but save into the contribution
+          setAction("edit");
+          setSubmitType("admin");
+          setExistingMerchant(null);
+          setReview(options.review);
+          populateFormFromMerchant(options.review.data);
+          setOpen(true);
+          return;
+        }
+        setReview(null);
         setAction(options.action);
         setSubmitType(options.submit);
         if (options.action === "edit" || options.action === "delete") {
@@ -438,8 +460,50 @@ export function MerchantDialog() {
 
   const validation = getSubmitValidation();
 
+  const handleReviewSave = async (
+    review: ReviewEditOptions<MerchantContributionData>,
+  ) => {
+    const data: MerchantContributionData = {
+      ...review.data,
+      name,
+      aliases,
+      website,
+      logoUrl,
+      logoChecksum:
+        review.data.logoUrl === logoUrl
+          ? review.data.logoChecksum
+          : "WILL BE CALCULATED ON REVIEW",
+      category,
+      weroSupport,
+      // Keep an empty original (null/undefined) as-is so it doesn't count as a change
+      notes: notes === "" && !review.data.notes ? review.data.notes : notes,
+    };
+    const { success, message } = await updateContributionData(
+      review.contributionId,
+      data,
+    );
+    if (!success) {
+      setSubmitError(message);
+      return;
+    }
+    setOpen(false);
+    toast.success(message);
+    review.onSaved();
+  };
+
   const handleSubmit = async (overrideDuplicateCheck = false) => {
     if (!validation.valid) return;
+    if (review) {
+      setIsSubmitting(true);
+      try {
+        await handleReviewSave(review);
+      } catch (error) {
+        setSubmitError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
     if (action === "add" && !overrideDuplicateCheck) {
       const duplicates = await findDuplicateMerchants({ website });
       if (duplicates.length > 0) {
@@ -524,6 +588,7 @@ export function MerchantDialog() {
   };
 
   const getTitle = (submitType: "contribution" | "admin") => {
+    if (review) return "Edit Contribution";
     if (action === "delete") {
       if (submitType === "contribution") {
         return `Suggest Deletion`;
@@ -546,6 +611,9 @@ export function MerchantDialog() {
   };
 
   const getDescription = (submitType: "contribution" | "admin") => {
+    if (review) {
+      return `Adjust "${review.data.name}" before approving. You will be added as co-author.`;
+    }
     if (action === "delete") {
       if (submitType === "contribution") {
         return `Request to remove "${existingMerchant?.name}" from the tracker.`;
@@ -640,7 +708,9 @@ export function MerchantDialog() {
                   : "Delete"
                 : submitType === "contribution"
                   ? "Submit for Review"
-                  : "Save"}
+                  : review
+                    ? "Save Changes"
+                    : "Save"}
             </Button>
           </div>
         </DialogFooter>

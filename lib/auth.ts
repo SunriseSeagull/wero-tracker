@@ -41,7 +41,9 @@ export const auth = betterAuth({
       maxAge: 5 * 60,
     },
   },
-  experimental: {
-    joins: true,
+  advanced: {
+    database: {
+      joins: true,
+    },
   },
 });

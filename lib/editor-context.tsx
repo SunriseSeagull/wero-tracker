@@ -3,6 +3,16 @@
 import React, { createContext, useCallback, useContext, useRef } from "react";
 import { Bank } from "@/db/schema/banks";
 import { Merchant } from "@/db/schema/merchants";
+import type {
+  BankContributionData,
+  MerchantContributionData,
+} from "@/db/schema/contributions";
+
+export type ReviewEditOptions<T> = {
+  contributionId: string;
+  data: T;
+  onSaved: () => void;
+};
 
 type EditorDialogOptions = (
   | {
@@ -19,10 +29,20 @@ type EditorDialogOptions = (
       action: "edit" | "delete";
       entity: Merchant;
     }
+  | {
+      type: "bank";
+      action: "review";
+      review: ReviewEditOptions<BankContributionData>;
+    }
+  | {
+      type: "merchant";
+      action: "review";
+      review: ReviewEditOptions<MerchantContributionData>;
+    }
 ) & { submit?: "contribution" | "admin" };
 
 type OpenEditorDialogCallback = (
-  options: Required<EditorDialogOptions>,
+  options: EditorDialogOptions & { submit: "contribution" | "admin" },
 ) => void;
 
 interface EditorContextValue {

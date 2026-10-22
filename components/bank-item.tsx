@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { StatusBadge, StatusDot } from "./status-badge";
 import { NotesText } from "./notes-text";
 import { ExternalLink, MoreVertical, Pencil, Trash2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import {
   DropdownMenu,
   DropdownMenuContent,

@@ -58,7 +58,6 @@ function WeroTrackerContent({ data }: WeroTrackerProps) {
   const [selectedStatuses, setSelectedStatuses] = useState<BaseSupportStatus[]>(
     [],
   );
-  const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
 
   const { openEditorDialog } = useEditor();
   const searchParams = useSearchParams();
@@ -125,13 +124,8 @@ function WeroTrackerContent({ data }: WeroTrackerProps) {
       })
       .forEach((bank) => {
         bank.countries
-          // country filter
-          .filter(
-            (code) =>
-              (selectedCountries.length === 0 ||
-                selectedCountries.includes(code)) &&
-              countries.includes(code),
-          )
+          // only show supported countries
+          .filter((code) => countries.includes(code))
           // status filter
           .filter(
             (code) =>
@@ -149,7 +143,7 @@ function WeroTrackerContent({ data }: WeroTrackerProps) {
       });
 
     return countryMap;
-  }, [data.banks, searchQuery, selectedCountries, selectedStatuses]);
+  }, [data.banks, searchQuery, selectedStatuses]);
 
   // Group merchants by category
   const filteredMerchantsByCategory = useMemo(() => {
@@ -212,7 +206,6 @@ function WeroTrackerContent({ data }: WeroTrackerProps) {
     setActiveView(view as ViewType);
     setSearchQuery("");
     setSelectedStatuses([]);
-    setSelectedCountries([]);
   };
 
   return (
@@ -246,13 +239,12 @@ function WeroTrackerContent({ data }: WeroTrackerProps) {
             <FilterBar
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
-              selectedStatuses={selectedStatuses}
-              onStatusChange={setSelectedStatuses}
-              selectedCountries={selectedCountries}
-              onCountryChange={setSelectedCountries}
               activeView={activeView}
             />
-            <Legend />
+            <Legend
+              selectedStatuses={selectedStatuses}
+              onStatusChange={setSelectedStatuses}
+            />
           </div>
 
           <TabsContent value="banks" className="space-y-6">

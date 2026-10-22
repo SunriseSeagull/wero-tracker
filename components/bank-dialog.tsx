@@ -45,8 +45,15 @@ import {
   ItemMedia,
   ItemTitle,
 } from "@/components/ui/item";
-import { createBankContribution } from "@/actions/contribution-actions";
-import { ContributionAction } from "@/db/schema/contributions";
+import {
+  createBankContribution,
+  updateContributionData,
+} from "@/actions/contribution-actions";
+import {
+  BankContributionData,
+  ContributionAction,
+} from "@/db/schema/contributions";
+import type { ReviewEditOptions } from "@/lib/editor-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Bank, BankingApp, CountryOverride, NewBank } from "@/db/schema/banks";
@@ -606,6 +613,8 @@ export function BankDialog() {
     "contribution",
   );
   const [existingBank, setExistingBank] = useState<Bank | null>(null);
+  const [review, setReview] =
+    useState<ReviewEditOptions<BankContributionData> | null>(null);
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [duplicateMatches, setDuplicateMatches] = useState<Bank[]>([]);
@@ -653,24 +662,35 @@ export function BankDialog() {
     setApps([]);
   };
 
-  const populateFormFromBank = (bank: Bank) => {
+  const populateFormFromBank = (bank: Bank | BankContributionData) => {
     setName(bank.name);
-    setAliases(bank.aliases);
+    setAliases(bank.aliases ?? []);
     setLogoUrl(bank.logoUrl);
     setWebsite(bank.website);
-    setCountries(bank.countries);
+    setCountries(bank.countries ?? []);
     setP2pPaymentsSupport(bank.p2pPaymentsSupport);
     setECommercePaymentsSupport(bank.eCommercePaymentsSupport);
     setPosPaymentsSupport(bank.posPaymentsSupport);
     setStandaloneAppSupport(bank.standaloneAppSupport);
     setNotes(bank.notes);
-    setApps(bank.bankingApps);
+    setApps(bank.bankingApps ?? []);
   };
 
   useEffect(() => {
     onOpenEditorDialog((options) => {
       if (options.type === "bank") {
         resetForm();
+        if (options.action === "review") {
+          // Reviewers edit the full data set like admins, but save into the contribution
+          setAction("edit");
+          setSubmitType("admin");
+          setExistingBank(null);
+          setReview(options.review);
+          populateFormFromBank(options.review.data);
+          setOpen(true);
+          return;
+        }
+        setReview(null);
         setAction(options.action);
         setSubmitType(options.submit);
         if (options.action === "edit" || options.action === "delete") {
@@ -788,8 +808,59 @@ export function BankDialog() {
 
   const validation = getSubmitValidation();
 
+  const handleReviewSave = async (
+    review: ReviewEditOptions<BankContributionData>,
+  ) => {
+    const pending = "WILL BE CALCULATED ON REVIEW";
+    const data: BankContributionData = {
+      ...review.data,
+      name,
+      aliases,
+      website,
+      logoUrl,
+      logoChecksum:
+        review.data.logoUrl === logoUrl ? review.data.logoChecksum : pending,
+      countries,
+      p2pPaymentsSupport,
+      eCommercePaymentsSupport,
+      posPaymentsSupport,
+      standaloneAppSupport,
+      bankingApps: apps.map((app) => {
+        const original = review.data.bankingApps?.find((a) => a.id === app.id);
+        return {
+          ...app,
+          iconChecksum:
+            original?.iconUrl === app.iconUrl ? original.iconChecksum : pending,
+        };
+      }),
+      notes,
+    };
+    const { success, message } = await updateContributionData(
+      review.contributionId,
+      data,
+    );
+    if (!success) {
+      setSubmitError(message);
+      return;
+    }
+    setOpen(false);
+    toast.success(message);
+    review.onSaved();
+  };
+
   const handleSubmit = async (overrideDuplicateCheck = false) => {
     if (!validation.valid) return;
+    if (review) {
+      setIsSubmitting(true);
+      try {
+        await handleReviewSave(review);
+      } catch (error) {
+        setSubmitError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
     if (action === "add" && !overrideDuplicateCheck) {
       const duplicates = await findDuplicateBanks({ website });
       if (duplicates.length > 0) {
@@ -890,6 +961,7 @@ export function BankDialog() {
   };
 
   const getTitle = (submitType: "contribution" | "admin") => {
+    if (review) return "Edit Contribution";
     if (action === "delete") {
       if (submitType === "contribution") {
         return `Suggest Deletion`;
@@ -912,6 +984,9 @@ export function BankDialog() {
   };
 
   const getDescription = (submitType: "contribution" | "admin") => {
+    if (review) {
+      return `Adjust "${review.data.name.default}" before approving. You will be added as co-author.`;
+    }
     if (action === "delete") {
       if (submitType === "contribution") {
         return `Request to remove "${existingBank?.name.default}" from the tracker.`;
@@ -1014,7 +1089,9 @@ export function BankDialog() {
                   : "Delete"
                 : submitType === "contribution"
                   ? "Submit for Review"
-                  : "Save"}
+                  : review
+                    ? "Save Changes"
+                    : "Save"}
             </Button>
           </div>
         </DialogFooter>

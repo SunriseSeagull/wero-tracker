@@ -1,5 +1,5 @@
 import "flag-icons/css/flag-icons.min.css";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 
 interface CountryFlagProps {
   countryCode: string;

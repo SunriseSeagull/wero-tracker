@@ -1,11 +1,11 @@
-import { Fragment, useMemo } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Info } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 
 interface NotesTextProps {
   notes: string;
@@ -51,15 +51,16 @@ function parseNotesWithLinks(notes: string): React.ReactNode[] {
 }
 
 /**
- * Renders an info icon that shows notes in a popover on click.
+ * Renders an info icon that shows notes in a hover card.
  * URLs in the text are converted to clickable links.
  */
 export function NotesText({ notes, className }: NotesTextProps) {
   const elements = useMemo(() => parseNotesWithLinks(notes), [notes]);
+  const [open, setOpen] = useState(false);
 
   return (
-    <Popover>
-      <PopoverTrigger asChild>
+    <HoverCard open={open} onOpenChange={setOpen} openDelay={150}>
+      <HoverCardTrigger asChild>
         <button
           type="button"
           className={cn(
@@ -67,14 +68,16 @@ export function NotesText({ notes, className }: NotesTextProps) {
             className,
           )}
           aria-label="View notes"
+          // Hover cards don't open on touch, so allow tapping as well
+          onClick={() => setOpen((o) => !o)}
         >
           <Info size={14} />
           <span className="text-xs leading-none translate-y-px">Info</span>
         </button>
-      </PopoverTrigger>
-      <PopoverContent side="top" className="max-w-xs md:max-w-md">
+      </HoverCardTrigger>
+      <HoverCardContent side="top" className="w-auto max-w-xs md:max-w-md">
         <p className="text-sm leading-relaxed">{elements}</p>
-      </PopoverContent>
-    </Popover>
+      </HoverCardContent>
+    </HoverCard>
   );
 }

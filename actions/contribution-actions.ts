@@ -5,12 +5,14 @@ import { banks } from "@/db/schema/banks";
 import {
   AddBankContributionData as AddBankContributionData,
   AddMerchantContributionData,
+  BankContributionData,
   Contribution,
   contributions,
   ContributionStatus,
   ContributionType,
   EditOrDeleteBankContributionData,
   EditOrDeleteMerchantContributionData,
+  MerchantContributionData,
   NewContribution,
 } from "@/db/schema/contributions";
 import { merchants } from "@/db/schema/merchants";
@@ -29,6 +31,7 @@ import {
 import { requireAdmin, requireSession } from "./session-actions";
 import { downloadFile } from "@/lib/download";
 import { CONTRIBUTIONS_PAGE_SIZE } from "@/lib/constants";
+import stableStringify from "json-stable-stringify";
 
 const merchantContributionSchema = z.discriminatedUnion("action", [
   z.strictObject({
@@ -209,6 +212,13 @@ export async function getContributions(
             image: true,
           },
         },
+        coAuthor: {
+          columns: {
+            id: true,
+            name: true,
+            image: true,
+          },
+        },
       },
       orderBy: (c, { desc }) => [desc(c.createdAt)],
       limit: CONTRIBUTIONS_PAGE_SIZE,
@@ -235,6 +245,107 @@ export async function getContributionCounts() {
     counts.total += row.count;
   }
   return counts;
+}
+
+export async function deleteContribution(
+  id: string,
+): Promise<{ success: boolean; message: string }> {
+  const session = await requireSession();
+
+  const existing = await db.query.contributions.findFirst({
+    where: (c, { eq }) => eq(c.id, id),
+  });
+
+  if (!existing || existing.userId !== session.user.id) {
+    return { success: false, message: "Contribution not found" };
+  }
+
+  if (existing.status !== "pending") {
+    return {
+      success: false,
+      message: "Only pending contributions can be deleted",
+    };
+  }
+
+  await db
+    .delete(contributions)
+    .where(
+      and(
+        eq(contributions.id, id),
+        eq(contributions.userId, session.user.id),
+        eq(contributions.status, "pending"),
+      ),
+    );
+
+  updateTag("contributions");
+
+  return { success: true, message: "Contribution deleted successfully" };
+}
+
+export async function updateContributionData(
+  id: string,
+  data: BankContributionData | MerchantContributionData,
+): Promise<{ success: boolean; message: string }> {
+  const session = await requireAdmin();
+
+  const existing = await db.query.contributions.findFirst({
+    where: (c, { eq }) => eq(c.id, id),
+  });
+
+  if (!existing) {
+    return { success: false, message: "Contribution not found" };
+  }
+  if (existing.status !== "pending") {
+    return {
+      success: false,
+      message: "Only pending contributions can be edited",
+    };
+  }
+  if (existing.action === "delete") {
+    return {
+      success: false,
+      message: "Deletion contributions cannot be edited",
+    };
+  }
+
+  const reason = existing.reason ?? "";
+  const result =
+    existing.type === "merchant"
+      ? merchantContributionSchema.safeParse(
+          existing.action === "add"
+            ? { action: existing.action, data }
+            : { action: existing.action, data, reason },
+        )
+      : bankContributionSchema.safeParse({
+          action: existing.action,
+          data,
+          reason,
+        });
+  if (!result.success) {
+    return {
+      success: false,
+      message: "Invalid contribution data: " + z.prettifyError(result.error),
+    };
+  }
+
+  if (stableStringify(data) === stableStringify(existing.data)) {
+    return { success: true, message: "No changes made" };
+  }
+
+  await db
+    .update(contributions)
+    .set({
+      data,
+      coAuthorId:
+        session.user.id === existing.userId
+          ? existing.coAuthorId
+          : session.user.id,
+    })
+    .where(and(eq(contributions.id, id), eq(contributions.status, "pending")));
+
+  updateTag("contributions");
+
+  return { success: true, message: "Contribution updated successfully" };
 }
 
 export async function rejectOrApproveContribution(

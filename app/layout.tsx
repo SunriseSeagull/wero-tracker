@@ -5,13 +5,13 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { SessionProvider } from "@/lib/session-context";
 import { auth } from "@/lib/auth";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
-const fontMono = Geist_Mono({
-  subsets: ["latin"],
+const geistMono = Geist_Mono({
   variable: "--font-mono",
+  subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
@@ -21,13 +21,20 @@ export const metadata: Metadata = {
   appleWebApp: {
     title: "Wero Adoption Tracker",
   },
+  alternates: {
+    types: {
+      "application/atom+xml": [
+        { url: "/atom", title: "Wero Tracker - Changes" },
+      ],
+      "application/rss+xml": [{ url: "/rss", title: "Wero Tracker - Changes" }],
+      "application/feed+json": [
+        { url: "/json", title: "Wero Tracker - Changes" },
+      ],
+    },
+  },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: LayoutProps<"/">) {
   // Not awaited on purpose: the layout stays statically prerenderable and the
   // session streams in with the same response
   const sessionPromise = headers().then((h) =>
@@ -35,15 +42,17 @@ export default function RootLayout({
   );
 
   return (
-    <html lang="en" className={cn("dark", "font-sans", geist.variable)}>
-      <body
-        className={cn(
-          "antialiased",
-          fontMono.variable,
-          "font-sans",
-          geist.variable,
-        )}
-      >
+    <html
+      lang="en"
+      className={cn(
+        "dark",
+        "font-sans",
+        geist.variable,
+        geistMono.variable,
+        "antialiased",
+      )}
+    >
+      <body>
         <Toaster />
         <SessionProvider sessionPromise={sessionPromise}>
           {children}

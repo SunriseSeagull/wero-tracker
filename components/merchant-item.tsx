@@ -20,7 +20,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useEditor } from "@/lib/editor-context";
-import { merchantCategoryOptions } from "@/lib/constants";
 import { Merchant } from "@/db/schema/merchants";
 import { ContributionAction } from "@/db/schema/contributions";
 import { redirect, usePathname, useSearchParams } from "next/navigation";
@@ -35,9 +34,6 @@ export function MerchantItem({ merchant }: MerchantItemProps) {
   const session = useSession();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const category = merchantCategoryOptions.find(
-    (option) => option.value === merchant.category,
-  );
 
   function handleEditOrDelete(type: Exclude<ContributionAction, "add">) {
     if (!session?.user) {
@@ -74,17 +70,12 @@ export function MerchantItem({ merchant }: MerchantItemProps) {
           </Avatar>
         </ItemMedia>
         <ItemContent>
-          <ItemTitle>
-            {merchant.name}{" "}
-            {merchant.notes && <NotesText notes={merchant.notes} />}
-          </ItemTitle>
-          <ItemDescription>
-            <span
-              className={`text-xs px-2 py-0.5 rounded-full ${category?.color}`}
-            >
-              {category?.label}
-            </span>
-          </ItemDescription>
+          <ItemTitle>{merchant.name}</ItemTitle>
+          {merchant.notes && (
+            <ItemDescription>
+              <NotesText notes={merchant.notes} className="-ml-1" />
+            </ItemDescription>
+          )}
         </ItemContent>
         <ItemActions>
           <StatusBadge status={merchant.weroSupport} />

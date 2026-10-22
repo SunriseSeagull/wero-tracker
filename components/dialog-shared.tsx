@@ -30,7 +30,7 @@ import {
 import { Bank, CountryOverride } from "@/db/schema/banks";
 import { baseStatus } from "@/lib/status-helper";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 
 const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
 

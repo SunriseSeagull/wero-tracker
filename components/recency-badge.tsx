@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import { getRecencyStatus } from "@/lib/recency-helper";
 
 interface RecencyBadgeProps {
@@ -22,8 +22,19 @@ export function RecencyBadge({
     return null;
   }
 
+  const formatDate = (date: Date) =>
+    new Date(date).toLocaleDateString("en", {
+      dateStyle: "medium",
+      timeZone: "UTC",
+    });
+  const title =
+    status === "new"
+      ? `Added on ${formatDate(createdAt)}`
+      : `Updated on ${formatDate(updatedAt)}`;
+
   return (
     <span
+      title={title}
       className={cn(
         "absolute -top-2 -right-2 z-10 rounded-full px-2 py-0.5 text-[10px] font-medium shadow-sm ring-1 ring-black/5",
         status === "new"
