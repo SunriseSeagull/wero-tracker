@@ -1,9 +1,136 @@
 import { db } from "@/db";
+import { BankingApp, CountryOverride, NewBank } from "@/db/schema/banks";
 import type { Contribution } from "@/db/schema/contributions";
+import { MerchantCategory, NewMerchant } from "@/db/schema/merchants";
+import { SupportStatus } from "@/db/schema/support";
+import {
+  baseSupportStatusOptions,
+  merchantCategoryOptions,
+  PartnerSystem,
+  partnerSystemOptions,
+} from "@/lib/constants";
+import { parseStatus } from "@/lib/status-helper";
 import { Feed } from "feed";
 import { cacheLife, cacheTag } from "next/cache";
 
-const IGNORED_FIELDS = new Set(["id", "logoChecksum"]);
+// These fields are generated or not useful to the user
+type IgnoredField =
+  "id" | "logoUrl" | "logoChecksum" | "createdAt" | "updatedAt";
+
+type LabeledField = Exclude<keyof NewBank | keyof NewMerchant, IgnoredField>;
+
+type FieldValue<K extends PropertyKey> =
+  | (K extends keyof NewBank ? NewBank[K] : never)
+  | (K extends keyof NewMerchant ? NewMerchant[K] : never);
+
+type FieldFormatter<K extends LabeledField> = {
+  label: string;
+  format: (value: NonNullable<FieldValue<K>>) => string;
+};
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function text(value: string): string {
+  return escapeHtml(value);
+}
+
+function link(url: string): string {
+  let isHttp = false;
+  try {
+    isHttp = ["http:", "https:"].includes(new URL(url).protocol);
+  } catch {}
+  if (!isHttp) return escapeHtml(url);
+  return `<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>`;
+}
+
+function list(values: string[]): string {
+  return values.length > 0 ? escapeHtml(values.join(", ")) : "–";
+}
+
+function category(value: MerchantCategory): string {
+  const option = merchantCategoryOptions.find((o) => o.value === value);
+  return escapeHtml(option?.label ?? value);
+}
+
+function status(value: SupportStatus): string {
+  const { base, partner } = parseStatus(value);
+  const label =
+    baseSupportStatusOptions.find((o) => o.value === base)?.label ?? base;
+  if (!partner) return escapeHtml(label);
+  const partnerLabel =
+    partnerSystemOptions[partner as PartnerSystem]?.label ?? partner;
+  return escapeHtml(`${label} via ${partnerLabel}`);
+}
+
+function overridable<T>(format: (value: NonNullable<T>) => string) {
+  const single = (v: T) =>
+    v === null || v === undefined || v === ""
+      ? "–"
+      : format(v as NonNullable<T>);
+  return (value: T | CountryOverride<T>): string => {
+    if (typeof value !== "object" || value === null || !("default" in value)) {
+      return single(value as T);
+    }
+    const { default: fallback, ...overrides } = value as CountryOverride<T>;
+    const entries = Object.entries(overrides);
+    if (entries.length === 0) return single(fallback);
+    const formatted = entries
+      .map(([country, v]) => `${escapeHtml(country)}: ${single(v)}`)
+      .join("; ");
+    return `${single(fallback)} (${formatted})`;
+  };
+}
+
+function bankingApps(apps: BankingApp[]): string {
+  if (apps.length === 0) return "–";
+  const items = apps.map(
+    (app) =>
+      `<li>${escapeHtml(app.name)}: Wero support: ${overridable<SupportStatus>(status)(app.weroSupport)}; Link: ${overridable<string>(link)(app.universalLink)}; Countries: ${list(app.supportedCountries)}</li>`,
+  );
+  return `<ul>${items.join("")}</ul>`;
+}
+
+const FIELDS: { [K in LabeledField]: FieldFormatter<K> } = {
+  name: { label: "Name", format: overridable<string>(text) },
+  aliases: { label: "Aliases", format: list },
+  website: { label: "Website", format: overridable<string>(link) },
+  countries: { label: "Countries", format: list },
+  category: { label: "Category", format: category },
+  weroSupport: { label: "Wero support", format: status },
+  p2pPaymentsSupport: {
+    label: "P2P payments",
+    format: overridable<SupportStatus>(status),
+  },
+  eCommercePaymentsSupport: {
+    label: "E-commerce payments",
+    format: overridable<SupportStatus>(status),
+  },
+  posPaymentsSupport: {
+    label: "POS payments",
+    format: overridable<SupportStatus>(status),
+  },
+  standaloneAppSupport: {
+    label: "Standalone Wero app",
+    format: overridable<SupportStatus>(status),
+  },
+  bankingApps: { label: "Banking apps", format: bankingApps },
+  notes: { label: "Notes", format: overridable<string | null>(text) },
+};
+
+function isLabeledField(key: string): key is LabeledField {
+  return key in FIELDS;
+}
+
+function renderValue<K extends LabeledField>(key: K, value: unknown): string {
+  if (value === null || value === undefined || value === "") return "–";
+  return FIELDS[key].format(value as NonNullable<FieldValue<K>>);
+}
 
 async function getApprovedContributions() {
   "use cache";
@@ -19,30 +146,6 @@ async function getApprovedContributions() {
     orderBy: (c, { desc }) => [desc(c.updatedAt)],
     limit: 50,
   });
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function formatValue(value: unknown): string {
-  if (value === null || value === undefined || value === "") return "–";
-  if (Array.isArray(value)) {
-    if (value.length === 0) return "–";
-    return value
-      .map((v) => (typeof v === "object" && v && "name" in v ? v.name : v))
-      .join(", ");
-  }
-  if (typeof value === "object") {
-    return Object.entries(value)
-      .map(([key, v]) => `${key}: ${formatValue(v)}`)
-      .join("; ");
-  }
-  return String(value);
 }
 
 function stripChecksums(value: unknown): unknown {
@@ -61,17 +164,17 @@ function buildContent(
 
   if (contribution.action === "edit" && previous) {
     for (const key of Object.keys(data)) {
-      if (IGNORED_FIELDS.has(key)) continue;
+      if (!isLabeledField(key)) continue;
       if (stripChecksums(data[key]) === stripChecksums(previous[key])) continue;
       rows.push(
-        `<li><strong>${escapeHtml(key)}</strong>: ${escapeHtml(formatValue(previous[key]))} → ${escapeHtml(formatValue(data[key]))}</li>`,
+        `<li><strong>${escapeHtml(FIELDS[key].label)}</strong>: ${renderValue(key, previous[key])} → ${renderValue(key, data[key])}</li>`,
       );
     }
   } else {
     for (const [key, value] of Object.entries(data)) {
-      if (IGNORED_FIELDS.has(key)) continue;
+      if (!isLabeledField(key)) continue;
       rows.push(
-        `<li><strong>${escapeHtml(key)}</strong>: ${escapeHtml(formatValue(value))}</li>`,
+        `<li><strong>${escapeHtml(FIELDS[key].label)}</strong>: ${renderValue(key, value)}</li>`,
       );
     }
   }
@@ -133,7 +236,11 @@ export async function buildFeed(request: Request): Promise<Feed> {
         { name: c.user?.name ?? "Unknown" },
         ...(coAuthorName ? [{ name: coAuthorName }] : []),
       ],
-      category: [{ term: c.type }],
+      category: [
+        c.type === "bank"
+          ? { term: c.type, name: "Bank" }
+          : { term: c.type, name: "Merchant" },
+      ],
       content: buildContent(c, coAuthorName),
     });
   }
