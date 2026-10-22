@@ -83,7 +83,7 @@ export async function updateMerchant(
   const { checksum: newLogoChecksum } = await downloadFile(merchant.logoUrl);
   const mirroredLogo =
     existingLogoChecksum !== newLogoChecksum ||
-    !isMirroredUrl(existingMerchant.logoUrl)
+    !(await isMirroredUrl(existingMerchant.logoUrl))
       ? await mirrorUrl(merchant.logoUrl, merchant.id)
       : {
           url: existingMerchant.logoUrl,

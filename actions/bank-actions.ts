@@ -94,7 +94,7 @@ export async function updateBank(updatedBank: NewBank): Promise<Bank> {
   const { checksum: newLogoChecksum } = await downloadFile(updatedBank.logoUrl);
   if (
     existingLogoChecksum !== newLogoChecksum ||
-    !isMirroredUrl(updatedBank.logoUrl)
+    !(await isMirroredUrl(updatedBank.logoUrl))
   ) {
     const mirroredLogo = await mirrorUrl(updatedBank.logoUrl, updatedBank.id);
     updatedBank.logoUrl = mirroredLogo.url;
@@ -112,7 +112,7 @@ export async function updateBank(updatedBank: NewBank): Promise<Bank> {
         const { checksum: newIconChecksum } = await downloadFile(app.iconUrl);
         if (
           existingIconChecksum !== newIconChecksum ||
-          !isMirroredUrl(app.iconUrl)
+          !(await isMirroredUrl(app.iconUrl))
         ) {
           const mirroredIcon = await mirrorUrl(app.iconUrl, app.id);
           return {
