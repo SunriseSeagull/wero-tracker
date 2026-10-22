@@ -8,7 +8,7 @@ import {
   newBankSchema,
   updateBankSchema,
 } from "@/db/schema/banks";
-import { del, mirrorUrl } from "@/lib/s3";
+import { del, isMirroredUrl, mirrorUrl } from "@/lib/s3";
 import { requireAdmin } from "@/actions/session-actions";
 import { and, asc, eq, ne, sql } from "drizzle-orm";
 import { cacheLife, cacheTag, updateTag } from "next/cache";
@@ -37,12 +37,12 @@ export async function createBank(
 
   // Mirror bank logo to S3
   const mirroredLogo = await mirrorUrl(bank.logoUrl, newBank.id);
-  bank.logoUrl = mirroredLogo.url;
-  bank.logoChecksum = mirroredLogo.checksum;
+  newBank.logoUrl = mirroredLogo.url;
+  newBank.logoChecksum = mirroredLogo.checksum;
 
   // Mirror banking app icons to S3
   if (bank.bankingApps) {
-    bank.bankingApps = await Promise.all(
+    newBank.bankingApps = await Promise.all(
       bank.bankingApps.map(async (app) => {
         const mirroredIcon = await mirrorUrl(app.iconUrl, app.id);
         return {
@@ -65,23 +65,23 @@ export async function createBank(
   return result;
 }
 
-export async function updateBank(
-  bank: Omit<NewBank, "createdAt" | "updatedAt">,
-): Promise<Bank> {
+export async function updateBank(updatedBank: NewBank): Promise<Bank> {
   await requireAdmin();
 
-  updateBankSchema.strict().parse(bank);
+  updateBankSchema.strict().parse(updatedBank);
 
   // Fetch existing bank to detect removed banking apps and changed logos
   const existingBank = await db
     .select()
     .from(banksTable)
-    .where(eq(banksTable.id, bank.id))
+    .where(eq(banksTable.id, updatedBank.id))
     .then(([b]) => b);
 
   // Delete S3 logos for removed banking apps
   if (existingBank.bankingApps) {
-    const newAppIds = new Set(bank.bankingApps?.map((app) => app.id) ?? []);
+    const newAppIds = new Set(
+      updatedBank.bankingApps?.map((app) => app.id) ?? [],
+    );
     for (const oldApp of existingBank.bankingApps) {
       if (!newAppIds.has(oldApp.id) && oldApp.iconUrl) {
         await del(oldApp.iconUrl);
@@ -89,27 +89,31 @@ export async function updateBank(
     }
   }
 
-  const updatedBank: NewBank = bank;
-
   // Mirror new bank logo to S3 if changed
   const existingLogoChecksum = existingBank.logoChecksum;
-  const { checksum: newLogoChecksum } = await downloadFile(bank.logoUrl);
-  if (existingLogoChecksum !== newLogoChecksum) {
-    const mirroredLogo = await mirrorUrl(bank.logoUrl, bank.id);
+  const { checksum: newLogoChecksum } = await downloadFile(updatedBank.logoUrl);
+  if (
+    existingLogoChecksum !== newLogoChecksum ||
+    !isMirroredUrl(updatedBank.logoUrl)
+  ) {
+    const mirroredLogo = await mirrorUrl(updatedBank.logoUrl, updatedBank.id);
     updatedBank.logoUrl = mirroredLogo.url;
     updatedBank.logoChecksum = mirroredLogo.checksum;
   }
 
   // Mirror new banking app icons to S3 if changed
-  if (bank.bankingApps) {
-    bank.bankingApps = await Promise.all(
-      bank.bankingApps.map(async (app) => {
+  if (updatedBank.bankingApps) {
+    updatedBank.bankingApps = await Promise.all(
+      updatedBank.bankingApps.map(async (app) => {
         const existingApp = existingBank.bankingApps.find(
           (a) => a.id === app.id,
         );
         const existingIconChecksum = existingApp?.iconChecksum;
         const { checksum: newIconChecksum } = await downloadFile(app.iconUrl);
-        if (existingIconChecksum !== newIconChecksum) {
+        if (
+          existingIconChecksum !== newIconChecksum ||
+          !isMirroredUrl(app.iconUrl)
+        ) {
           const mirroredIcon = await mirrorUrl(app.iconUrl, app.id);
           return {
             ...app,
@@ -117,7 +121,9 @@ export async function updateBank(
             iconChecksum: mirroredIcon.checksum,
           };
         }
-        return app;
+        return {
+          ...app,
+        };
       }),
     );
   }
@@ -125,7 +131,7 @@ export async function updateBank(
   const result = await db
     .update(banksTable)
     .set(updatedBank)
-    .where(eq(banksTable.id, bank.id))
+    .where(eq(banksTable.id, updatedBank.id))
     .returning()
     .then(([updated]) => updated);
 

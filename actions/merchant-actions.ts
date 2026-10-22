@@ -7,7 +7,7 @@ import {
   NewMerchant,
   newMerchantSchema,
 } from "@/db/schema/merchants";
-import { del, mirrorUrl } from "@/lib/s3";
+import { del, isMirroredUrl, mirrorUrl } from "@/lib/s3";
 import { requireAdmin } from "@/actions/session-actions";
 import { eq, asc, sql, ilike, and, ne } from "drizzle-orm";
 import { cacheLife, cacheTag, updateTag } from "next/cache";
@@ -82,7 +82,8 @@ export async function updateMerchant(
   const existingLogoChecksum = existingMerchant.logoChecksum;
   const { checksum: newLogoChecksum } = await downloadFile(merchant.logoUrl);
   const mirroredLogo =
-    existingLogoChecksum !== newLogoChecksum
+    existingLogoChecksum !== newLogoChecksum ||
+    !isMirroredUrl(existingMerchant.logoUrl)
       ? await mirrorUrl(merchant.logoUrl, merchant.id)
       : {
           url: existingMerchant.logoUrl,

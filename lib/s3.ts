@@ -72,6 +72,9 @@ export const del = async (url: string) => {
   );
 };
 
+export const isMirroredUrl = (url: string) =>
+  url.startsWith(S3_PUBLIC_ACCESS_ENDPOINT + "/");
+
 export const mirrorUrl = async (
   url: string,
   basename?: string,
