@@ -109,8 +109,8 @@ function WeroTrackerContent({ data }: WeroTrackerProps) {
     data.banks
       // name filter
       .filter((bank) => {
-        if (searchQuery) {
-          const query = searchQuery.toLowerCase();
+        const query = searchQuery.trim().toLowerCase();
+        if (query) {
           const bankNames = [
             ...Object.values(bank.name).map((n) => n.toLowerCase()),
             ...bank.aliases.map((a) => a.toLowerCase()),
@@ -152,8 +152,8 @@ function WeroTrackerContent({ data }: WeroTrackerProps) {
     data.merchants
       // name filter
       .filter((merchant) => {
-        if (searchQuery) {
-          const query = searchQuery.toLowerCase();
+        const query = searchQuery.trim().toLowerCase();
+        if (query) {
           const merchantNames = [
             merchant.name.toLowerCase(),
             ...merchant.aliases.map((a) => a.toLowerCase()),

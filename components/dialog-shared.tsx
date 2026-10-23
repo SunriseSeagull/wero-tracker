@@ -18,6 +18,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { SupportStatus } from "@/db/schema/support";
 import { ChevronRight, ExternalLink, Plus, X } from "lucide-react";
@@ -133,44 +134,33 @@ function PerCountryDialog({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.preventDefault();
-          setOpen(true);
-        }}
-        className="w-full text-left"
-      >
-        {trigger}
-      </button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-hidden grid-rows-[auto_1fr_auto] sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{label}</DialogTitle>
-            <DialogDescription>Set a value for each country.</DialogDescription>
-          </DialogHeader>
-          <div className="min-h-0 overflow-y-auto">
-            <div className="space-y-2 py-2">{children}</div>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setOpen(false)}>Done</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-hidden grid-rows-[auto_1fr_auto] sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{label}</DialogTitle>
+          <DialogDescription>Set a value for each country.</DialogDescription>
+        </DialogHeader>
+        <div className="min-h-0 overflow-y-auto">
+          <div className="space-y-2 py-2">{children}</div>
+        </div>
+        <DialogFooter>
+          <Button onClick={() => setOpen(false)}>Done</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 function TriggerSurface({
   className,
   children,
-}: {
-  className?: string;
-  children: React.ReactNode;
-}) {
+  ...props
+}: React.ComponentProps<typeof Button>) {
   return (
     <Button
+      type="button"
+      {...props}
       className={cn(`w-full border-input! bg-clip-border`, className)}
       variant="outline"
     >
