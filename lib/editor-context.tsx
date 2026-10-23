@@ -10,6 +10,7 @@ import type {
 
 export type ReviewEditOptions<T> = {
   contributionId: string;
+  isOwner: boolean;
   data: T;
   onSaved: () => void;
 };

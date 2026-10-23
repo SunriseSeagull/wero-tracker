@@ -256,7 +256,9 @@ export async function deleteContribution(
     where: (c, { eq }) => eq(c.id, id),
   });
 
-  if (!existing || existing.userId !== session.user.id) {
+  const isAdmin = session.user.role === "admin";
+
+  if (!existing || (!isAdmin && existing.userId !== session.user.id)) {
     return { success: false, message: "Contribution not found" };
   }
 
@@ -272,7 +274,7 @@ export async function deleteContribution(
     .where(
       and(
         eq(contributions.id, id),
-        eq(contributions.userId, session.user.id),
+        eq(contributions.userId, existing.userId),
         eq(contributions.status, "pending"),
       ),
     );
@@ -286,7 +288,7 @@ export async function updateContributionData(
   id: string,
   data: BankContributionData | MerchantContributionData,
 ): Promise<{ success: boolean; message: string }> {
-  const session = await requireAdmin();
+  const session = await requireSession();
 
   const existing = await db.query.contributions.findFirst({
     where: (c, { eq }) => eq(c.id, id),
@@ -294,6 +296,12 @@ export async function updateContributionData(
 
   if (!existing) {
     return { success: false, message: "Contribution not found" };
+  }
+  if (
+    session.user.role !== "admin" &&
+    session.user.id !== existing.userId
+  ) {
+    throw new Error("Unauthorized");
   }
   if (existing.status !== "pending") {
     return {

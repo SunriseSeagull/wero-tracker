@@ -45,6 +45,7 @@ import {
   Clock,
   Download,
   Edit3,
+  ExternalLink,
   Filter,
   Landmark,
   Loader2,
@@ -468,7 +469,6 @@ function ReviewDialog({
   open,
   onOpenChange,
   onAction,
-  onEdited,
   isApproving,
   isRejecting,
   canReview,
@@ -481,37 +481,15 @@ function ReviewDialog({
     action: "approved" | "rejected",
     reviewNote: string,
   ) => void;
-  onEdited: () => void;
   isApproving: boolean;
   isRejecting: boolean;
   canReview: boolean;
 }) {
   const [reviewNote, setReviewNote] = useState("");
-  const { openEditorDialog } = useEditor();
   const entityName =
     contribution.type === "bank"
       ? (contribution.data as BankContributionData).name.default
       : (contribution.data as MerchantContributionData).name;
-
-  const handleEdit = () => {
-    const review = { contributionId: contribution.id, onSaved: onEdited };
-    if (contribution.type === "bank") {
-      openEditorDialog({
-        type: "bank",
-        action: "review",
-        review: { ...review, data: contribution.data as BankContributionData },
-      });
-    } else {
-      openEditorDialog({
-        type: "merchant",
-        action: "review",
-        review: {
-          ...review,
-          data: contribution.data as MerchantContributionData,
-        },
-      });
-    }
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -564,16 +542,21 @@ function ReviewDialog({
           >
             Cancel
           </Button>
-          {canReview && contribution.action !== "delete" && (
-            <Button
-              variant="outline"
-              onClick={handleEdit}
-              disabled={isApproving || isRejecting}
-            >
-              <Edit3 size={16} />
-              Edit
-            </Button>
-          )}
+          {contribution.type === "merchant" &&
+            /^https?:\/\//i.test(
+              (contribution.data as MerchantContributionData).website,
+            ) && (
+              <Button variant="outline" asChild>
+                <a
+                  href={(contribution.data as MerchantContributionData).website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink size={16} />
+                  Open Website
+                </a>
+              </Button>
+            )}
           <Button
             variant="destructive"
             onClick={() => onAction(contribution.id, "rejected", reviewNote)}
@@ -707,17 +690,48 @@ function ContributionCard({
   canDelete,
   onDelete,
   isDeleting,
+  canEdit,
+  isOwner,
+  onEdited,
 }: {
   contribution: ContributionWithRelations;
   onReview: (c: ContributionWithRelations) => void;
   canDelete: boolean;
   onDelete: (id: string) => void;
   isDeleting: boolean;
+  canEdit: boolean;
+  isOwner: boolean;
+  onEdited: () => void;
 }) {
+  const { openEditorDialog } = useEditor();
   const entityName =
     contribution.type === "bank"
       ? (contribution.data as BankContributionData).name.default
       : (contribution.data as MerchantContributionData).name;
+
+  const handleEdit = () => {
+    const review = {
+      contributionId: contribution.id,
+      isOwner,
+      onSaved: onEdited,
+    };
+    if (contribution.type === "bank") {
+      openEditorDialog({
+        type: "bank",
+        action: "review",
+        review: { ...review, data: contribution.data as BankContributionData },
+      });
+    } else {
+      openEditorDialog({
+        type: "merchant",
+        action: "review",
+        review: {
+          ...review,
+          data: contribution.data as MerchantContributionData,
+        },
+      });
+    }
+  };
 
   return (
     <Card className="py-0">
@@ -782,11 +796,28 @@ function ContributionCard({
           {/* Actions */}
           {contribution.status === "pending" && (
             <div className="flex items-start gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onReview(contribution)}
+              >
+                Review
+              </Button>
+              {canEdit && contribution.action !== "delete" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleEdit}
+                  aria-label="Edit contribution"
+                >
+                  <Edit3 size={16} />
+                </Button>
+              )}
               {canDelete && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button
-                      variant="outline"
+                      variant="destructive"
                       size="sm"
                       disabled={isDeleting}
                       aria-label="Delete contribution"
@@ -802,8 +833,9 @@ function ContributionCard({
                     <AlertDialogHeader>
                       <AlertDialogTitle>Delete contribution?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Your contribution for &quot;{entityName}&quot; will be
-                        permanently deleted. This cannot be undone.
+                        {isOwner ? "Your contribution" : "The contribution"} for
+                        &quot;{entityName}&quot; will be permanently deleted.
+                        This cannot be undone.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -818,13 +850,6 @@ function ContributionCard({
                   </AlertDialogContent>
                 </AlertDialog>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onReview(contribution)}
-              >
-                Review
-              </Button>
             </div>
           )}
         </div>
@@ -1191,9 +1216,12 @@ export function ContributionsPage({
                   key={contribution.id}
                   contribution={contribution}
                   onReview={(c) => setReviewTargetId(c.id)}
-                  canDelete={currentUser?.id === contribution.userId}
+                  canDelete={isAdmin || currentUser?.id === contribution.userId}
                   onDelete={handleDelete}
                   isDeleting={deletingId === contribution.id}
+                  canEdit={isAdmin || currentUser?.id === contribution.userId}
+                  isOwner={currentUser?.id === contribution.userId}
+                  onEdited={fetchContributions}
                 />
               ))
             )}
@@ -1267,7 +1295,6 @@ export function ContributionsPage({
               if (!open) setReviewTargetId(null);
             }}
             onAction={handleReviewAction}
-            onEdited={fetchContributions}
             isApproving={isApproving}
             isRejecting={isRejecting}
             canReview={isAdmin}

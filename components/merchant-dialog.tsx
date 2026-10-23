@@ -612,7 +612,9 @@ export function MerchantDialog() {
 
   const getDescription = (submitType: "contribution" | "admin") => {
     if (review) {
-      return `Adjust "${review.data.name}" before approving. You will be added as co-author.`;
+      return review.isOwner
+        ? `Adjust your contribution for "${review.data.name}".`
+        : `Adjust "${review.data.name}" before approving. You will be added as co-author.`;
     }
     if (action === "delete") {
       if (submitType === "contribution") {

@@ -985,7 +985,9 @@ export function BankDialog() {
 
   const getDescription = (submitType: "contribution" | "admin") => {
     if (review) {
-      return `Adjust "${review.data.name.default}" before approving. You will be added as co-author.`;
+      return review.isOwner
+        ? `Adjust your contribution for "${review.data.name.default}".`
+        : `Adjust "${review.data.name.default}" before approving. You will be added as co-author.`;
     }
     if (action === "delete") {
       if (submitType === "contribution") {
